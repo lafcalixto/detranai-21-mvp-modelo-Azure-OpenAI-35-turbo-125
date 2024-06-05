@@ -622,3 +622,234 @@ with open(evaluation_data_file_path, "w") as file:
 
 - Abre o arquivo de saída para escrita e executa a função process para processar os dados e escrever os resultados no arquivo.
 
+# Preparação de dados
+
+# Prepare dados localmente
+
+Siga as instruções nesta seção para preparar seus dados localmente. Isso é mais fácil para pequenos conjuntos de dados. Para conjuntos muito maiores, consulte as [instruções para usar AML abaixo](#use-aml-to-prepare-data).
+
+## Configurar
+- Instale os pacotes necessários listados em requisitos.txt, por exemplo.
+
+```linux
+pip install --user -r requisitos.txt
+```
+
+## Configure
+
+- Crie um arquivo .env semelhante ao arquivo .env.example. Preencha os valores das variáveis ​​de ambiente.
+- Crie um arquivo de configuração como `config.json`. O formato deve ser uma lista de objetos JSON, com cada objeto especificando uma configuração de caminho de dados local e serviço de pesquisa de destino e índice.
+
+```
+[
+    {
+        "data_path": "<local path or blob URL>",
+        "location": "<azure region, e.g. 'westus2'>", 
+        "subscription_id": "<subscription id>",
+        "resource_group": "<resource group name>",
+        "search_service_name": "<search service name to use or create>",
+        "index_name": "<index name to use or create>",
+        "chunk_size": 1024, // definido como null para desabilitar o chunking antes da ingestão
+        "token_overlap": 128 // number of tokens to overlap between chunks
+        "semantic_config_name": "default",
+        "language": "en" // configuração para definir o idioma dos seus documentos. Altere se seus documentos não estiverem em inglês. Procure em data_preparation.py por SUPPORTED_LANGUAGE_CODES,
+        "vector_config_name": "default" // usado se adicionar vetores ao índice
+    }
+]
+```
+
+Observação: `data_path` pode ser um caminho para arquivos localizados localmente em sua máquina ou uma URL de Blob do Azure, por exemplo. do formato `"https://<nome da conta de armazenamento>.blob.core.windows.net/<nome do contêiner>/<caminho>/"`. Se uma URL de blob for usada, os dados serão baixados primeiro do Blob Storage para um diretório temporário em seu computador antes de prosseguir com a preparação dos dados.
+
+## Criar índices e ingerir dados
+Isenção de responsabilidade: certifique-se de que não haja páginas duplicadas em seus dados. Isso pode afetar negativamente a qualidade das respostas que você obtém.
+
+- Execute o script de preparação de dados, passando seu arquivo de configuração. Você pode definir njobs para análise paralela de seus arquivos.
+
+    ```
+    python data_preparation.py --config config.json --njobs=4
+    ```
+
+### Criação de índices em lote
+Consulte o script run_batch_create_index.py para criar vários índices em lote usando um script.
+
+## Opcional: Use URL de Blob do Azure para preparar dados
+Cada documento pode ser associado a uma URL que é armazenada com cada pedaço de documento no índice do Azure Cognitive Search no campo "url". Se seus documentos foram baixados da Web, você poderá especificar um prefixo de URL a ser usado para construir as URLs do documento ao ingerir seus dados. Seu arquivo de configuração deve ter um parâmetro `url_prefix` adicional como este:
+
+```
+[
+    {
+        "data_path": "<local path or blob URL>",
+        "url_prefix": "https://<source website URL>.com/"
+        "location": "<azure region, e.g. 'westus2'>", 
+        "subscription_id": "<subscription id>",
+        "resource_group": "<resource group name>",
+        "search_service_name": "<search service name to use or create>",
+        "index_name": "<index name to use or create>",
+        "chunk_size": 1024, // set to null to disable chunking before ingestion
+        "token_overlap": 128 // number of tokens to overlap between chunks
+        "semantic_config_name": "default",
+        "language": "en" // setting to set language of your documents. Change if your documents are not in English. Look in data_preparation.py for SUPPORTED_LANGUAGE_CODES,
+        "vector_config_name": "default" // used if adding vectors to index
+    }
+]
+```
+
+Para cada documento, a URL armazenada com pedaços desse documento será `url_prefix` concatenada com o caminho relativo do documento em `data_path`. Por exemplo, se meu `data_path` for `mydata` contendo a seguinte estrutura:
+
+```
+└───mydata
+    │   overview.html
+    │
+    └───examples
+            example1.html
+            example2.html
+```
+
+And `url_prefix` is `"https://my-wiki.com/"`, the resulting URLs will be:
+|File| URL|
+|---|---|
+|overview.html | `"https://my-wiki.com/overview.html"`|
+|example1.html | `"https://my-wiki.com/examples/example1.html"`|
+|example2.html | `"https://my-wiki.com/examples/example2.html"`|
+
+Essas URLs podem então ser usadas ​​na exibição de citações no aplicativo da web. Consulte o [README](../README.md#umbling-citation-display) para obter mais detalhes.
+
+Para cada documento, a URL armazenada com pedaços desse documento será `url_prefix` concatenada com o caminho relativo do documento em `data_path`. Por exemplo, se meu `data_path` for `mydata` contendo a seguinte estrutura:
+
+```
+└───mydata
+    │   overview.html
+    │
+    └───examples
+            example1.html
+            example2.html
+```
+And `url_prefix` is `"https://my-wiki.com/"`, the resulting URLs will be:
+|File| URL|
+|---|---|
+|overview.html | `"https://my-wiki.com/overview.html"`|
+|example1.html | `"https://my-wiki.com/examples/example1.html"`|
+|example2.html | `"https://my-wiki.com/examples/example2.html"`|
+
+Essas URLs podem então ser usadas ​​na exibição de citações no aplicativo da web. Consulte o [README](../README.md#umbling-citation-display) para obter mais detalhes.
+
+Se você tiver documentos de vários sites de origem, poderá especificar vários caminhos e prefixos seguindo o exemplo em `config_multiple_url.json`.
+
+```
+[
+    {
+        "data_paths": [
+            {
+                "path": "data/source1",
+                "url_prefix": "https://<URL for source 1>.com/"
+            },
+            {
+                "path": "data/source2",
+                "url_prefix": "https://<URL for source 2>.com/"
+            }
+        ],
+        "subscription_id": "<subscription id>",
+        "resource_group": "<resource group name>",
+        "search_service_name": "<search service name to use or create>",
+        "index_name": "<index name to use or create>",
+        "chunk_size": 1024,
+        "token_overlap": 128,
+        "semantic_config_name": "default",
+        "language": "<Language to support for example use 'en' for English. Checked supported languages here under lucene - https://learn.microsoft.com/en-us/azure/search/index-add-language-analyzers"
+    }
+]
+```
+
+O script de ingestão percorrerá cada caminho em `data_paths` e construirá as URLs do documento seguindo o mesmo padrão descrito acima, usando o prefixo de URL específico para cada caminho de dados.
+
+Você pode modificar a lógica de construção da URL em `process_file()` em [data_utils.py](./data_utils.py):
+
+```
+url_path = None
+rel_file_path = os.path.relpath(file_path, directory_path)
+if url_prefix:
+    url_path = url_prefix + rel_file_path
+    url_path = convert_escaped_to_posix(url_path)
+```
+
+## Opcional: Adicionar incorporações de vetores
+A Pesquisa Cognitiva do Azure dá suporte à pesquisa vetorial em versão prévia pública. Consulte [os documentos](https://learn.microsoft.com/en-us/azure/search/vector-search-overview) para obter mais informações.
+
+Para adicionar vetores ao seu índice, primeiro você precisará de um [recurso Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/overview) com uma [implantação de modelo de incorporação Ada] (https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models#embeddings-models). O modelo `text-embedding-ada-002` é suportado.
+
+- Obtenha o endpoint para incorporar a implantação do modelo. O endpoint geralmente terá o formato `https://<nome do recurso Azure Openai>.openai.azure.com/openai/deployments/<nome de implantação ada>/embeddings?api-version=2023-06-01-preview` .
+- Execute o script de preparação de dados, passando seu arquivo de configuração e o endpoint e a chave de incorporação como argumentos extras:
+
+    
+      `python data_preparation.py --config config.json --embedding-model-endpoint "<embedding endpoint>"`
+
+## Opcional: transformar PDFs em texto
+Se seus dados estiverem no formato PDF, primeiro você precisará converter do formato PDF para o formato .txt. Você pode usar seu próprio script para isso ou usar o código de conversão fornecido aqui.
+
+### Configuração para cracking de PDF
+
+- Crie um [reconhecedor de formulário](https://learn.microsoft.com/en-us/azure/applied-ai-services/form-recognizer/create-a-form-recognizer-resource?view=form-recog-3.0.0) na sua assinatura 
+- Certifique-se de ter o SDK do Reconhecedor de Formulários: `pip install azure-ai-formrecognizer`
+- Execute o seguinte comando para obter uma chave de acesso para o seu recurso Form Recognizer:
+
+```
+az cognitiveservices account keys list --name "<form-rec-resource-name>" --resource-group "<resource-group-name>"
+```
+
+Copie uma das chaves retornadas por este comando.
+
+### Crie índices e carrgue os dados de PDF com o Reconhecedor de Formulários
+Passe o nome e a chave do recurso do Form Recognizer ao executar o script de preparação de dados:
+
+```
+python data_preparation.py --config config.json --njobs=4 --form-rec-resource <form-rec-resource-name> --form-rec-key <form-rec-key>
+```
+
+Isso usará o modelo de leitura do Reconhecedor de Formulários por padrão. 
+
+Se seus documentos tiverem muitas tabelas e informações de layout relevantes, você poderá usar o modelo Form Recognizer Layout, que é mais caro e mais lento de executar, mas preservará as informações da tabela com melhor qualidade. O modelo Layout também ajudará a preservar algumas informações de formatação do documento, como títulos e subtítulos, o que tornará as citações mais legíveis. Para usar o modelo Layout em vez do modelo Read padrão, passe o argumento `--form-rec-use-layout`.
+
+```
+python data_preparation.py --config config.json --njobs=4 --form-rec-resource <form-rec-resource-name> --form-rec-key <form-rec-key> --form-rec-use-layout
+```
+
+# Use AML (Azure Machine Learn) para preparar dados
+## Configurar
+- Instalar [Azure ML CLI v2](https://learn.microsoft.com/en-us/azure/machine-learning/concept-v2?view=azureml-api-2)
+
+## Pré-requisitos
+- Azure Machine Learning (AML) Workspace associada a Keyvault
+- Azure Cognitive Search (ACS) resource
+- (Optional if processing PDF) [Azure AI Document Intelligence](https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/overview?view=doc-intel-3.1.0) resource
+- (Opcional se adicionar embeddings para vector search) Azure OpenAI resource with Ada (text-embedding-ada-002) deployment
+- (Optional) Azure Blob Storage account
+## Configurar
+- Criar chaves no keyvault AML para a chave de administração de recursos do Azure Cognitive Search, a chave de acesso do Document Intelligence e a chave de API do Azure OpenAI (se estiver usando)
+- Crie um arquivo de configuração como `aml_config.json`. O formato pode ser um único objeto JSON ou uma lista deles, com cada objeto especificando uma configuração de chaves do Keyvault, configurações de chunking e configuração de índice.
+```
+{
+        "chunk_size": 1024,
+        "token_overlap": 128,
+        "keyvault_url": "https://<keyvault name>.vault.azure.net/",
+        "document_intelligence_secret_name": "myDocIntelligenceKey",
+        "document_intelligence_endpoint": "https://<document intelligence resource name>.cognitiveservices.azure.com/",
+        "embedding_key_secret_name": "myAzureOpenAIKey",
+        "embedding_endpoint": "https:/<azure openai resource name>.openai.azure.com/openai/deployments/<Ada deployment name>/embeddings?api-version=2023-06-01-preview",
+        "index_name": "<new index name>",
+        "search_service_name": "<search service name>",
+        "search_key_secret_name": "mySearchServiceKey"
+}
+```
+
+## Opcional: crie um armazenamento de dados AML
+Se os seus dados estiverem no Armazenamento de Blobs do Azure, você poderá primeiro criar um Datastore AML que será usado para se conectar aos seus dados durante o upload. Atualize `datastore.yml` com as informações da sua conta de armazenamento, incluindo a chave da conta. Em seguida, execute este comando usando o grupo de recursos e o nome do espaço de trabalho do seu espaço de trabalho AML:
+
+```
+az ml datastore create --resource-group <workspace resource group> --workspace-name <workspace name> --file datastore.yml
+```
+## Envie o "work" do pipeline de processamento de dados
+Em `pipeline.yml`, atualize as entradas para apontar para o nome do arquivo de configuração e o armazenamento de dados que você criou. Se você estiver usando dados armazenados localmente, comente o caminho do armazenamento de dados e remova o comentário do caminho local, atualizando para apontar para o local dos dados locais. Em seguida, envie o trabalho do pipeline para seu espaço de trabalho AML:
+
+```
+az ml job create --resource-group <workspace resource group> --workspace-name <workspace name> --file pipeline.yml
+```
