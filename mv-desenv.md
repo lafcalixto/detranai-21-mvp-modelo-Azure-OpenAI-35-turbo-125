@@ -460,3 +460,165 @@ Se você não estiver usando uma dessas opções para abrir o projeto, então vo
 1. Execute `azd auth login` para fazer login na sua conta Azure.
 1. Execute `azd up` para provisionar recursos do Azure e implantar este exemplo nesses recursos. Isso também executa um script para criar o índice de pesquisa com base nos arquivos na pasta `./data`.
 1. Após a aplicação ter sido implantada com &#8203;:citation[oaicite:0]{index=0}&#8203;
+
+# Explicação do Script data_collection.py
+
+Este script realiza a coleta de dados e processamento de pares de perguntas e respostas (QA) usando um módulo de aplicação (`app.py`). O script carrega variáveis de ambiente, lê dados de um arquivo JSON, processa as perguntas através de uma API e grava os resultados em um arquivo JSONL.
+
+# Generate the translated explanation in a markdown file
+
+translated_data_collection_explanation = """
+# Explicação do Script data_collection.py
+
+Este script realiza a coleta de dados e processamento de pares de perguntas e respostas (QA) usando um módulo de aplicação (`app.py`). O script carrega variáveis de ambiente, lê dados de um arquivo JSON, processa as perguntas através de uma API e grava os resultados em um arquivo JSONL.
+
+## Importações
+
+```python
+import os
+import sys
+import asyncio
+import json
+from dotenv import load_dotenv
+```
+
+- os, sys: Utilizados para manipulação do sistema operacional e do caminho de arquivos.
+- asyncio: Utilizado para programação assíncrona.
+- json: Utilizado para manipulação de dados em formato JSON.
+- load_dotenv: Utilizado para carregar variáveis de ambiente de um arquivo .env.
+
+```python
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+```
+
+- Adiciona o diretório pai ao sys.path para permitir a importação do módulo app.py.
+
+```python
+import app
+```
+
+- load_env_into_module: Carrega variáveis de ambiente de um arquivo .env e define essas variáveis no módulo especificado (app neste caso).
+
+```python
+app.SHOULD_STREAM = False
+app.SHOULD_USE_DATA = app.should_use_data()
+```
+
+- Define algumas configurações necessárias no app.py.
+
+```python
+generated_data_path = r"path/to/qa_input_file.json"
+```
+
+- Define o caminho do arquivo JSON contendo os pares de perguntas e respostas.
+
+```python
+with open(generated_data_path, 'r') as file:
+    data = json.load(file)
+```
+
+- Lê os dados do arquivo JSON e os carrega na variável data.
+
+```python
+async def process(data: list, file):
+  for qa_pairs_obj in data:
+      qa_pairs = qa_pairs_obj["qa_pairs"]
+      for qa_pair in qa_pairs:
+          question = qa_pair["question"]
+          messages = [{"role":"user", "content":question}]
+
+          print("processing question "+question)
+
+          request = {"messages":messages, "id":"1"}
+
+          response = await app.complete_chat_request(request)
+
+          messages = response["choices"][0]["messages"]
+
+          tool_message = None
+          assistant_message = None
+
+          for message in messages:
+            if message["role"] == "tool":
+              tool_message = message["content"]
+            elif message["role"] == "assistant":
+              assistant_message = message["content"]
+            else:
+              raise ValueError("unknown message role")
+
+          user_message = {"role":"user", "content":question}
+          assistant_message = {"role":"assistant", "content":assistant_message}
+
+          citations = json.loads(tool_message)
+          assistant_message["context"] = citations
+
+          messages = []
+          messages.append(user_message)
+          messages.append(assistant_message)
+
+          evaluation_data = {"messages":messages}
+
+          file.write(json.dumps(evaluation_data)+"\n")
+          file.flush()
+```
+
+- Lê os dados do arquivo JSON e os carrega na variável data.
+
+```python
+async def process(data: list, file):
+  for qa_pairs_obj in data:
+      qa_pairs = qa_pairs_obj["qa_pairs"]
+      for qa_pair in qa_pairs:
+          question = qa_pair["question"]
+          messages = [{"role":"user", "content":question}]
+
+          print("processing question "+question)
+
+          request = {"messages":messages, "id":"1"}
+
+          response = await app.complete_chat_request(request)
+
+          messages = response["choices"][0]["messages"]
+
+          tool_message = None
+          assistant_message = None
+
+          for message in messages:
+            if message["role"] == "tool":
+              tool_message = message["content"]
+            elif message["role"] == "assistant":
+              assistant_message = message["content"]
+            else:
+              raise ValueError("unknown message role")
+
+          user_message = {"role":"user", "content":question}
+          assistant_message = {"role":"assistant", "content":assistant_message}
+
+          citations = json.loads(tool_message)
+          assistant_message["context"] = citations
+
+          messages = []
+          messages.append(user_message)
+          messages.append(assistant_message)
+
+          evaluation_data = {"messages":messages}
+
+          file.write(json.dumps(evaluation_data)+"\n")
+          file.flush()
+```
+
+- process: Função assíncrona que processa uma lista de pares de perguntas e respostas, enviando as perguntas para a API e escrevendo as respostas no arquivo de saída.
+
+```python
+evaluation_data_file_path = r"path/to/output_file.jsonl"
+```
+
+- Define o caminho do arquivo JSONL onde os dados processados serão salvos.
+
+```python
+with open(evaluation_data_file_path, "w") as file:
+  asyncio.run(process(data, file))
+```
+
+- Abre o arquivo de saída para escrita e executa a função process para processar os dados e escrever os resultados no arquivo.
+
